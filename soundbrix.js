@@ -45,12 +45,39 @@
     * Add 'webkitAudioContext' as a global variable in JSLint
     
 */
-
+var SOUNDBRIX;
 (function (global) {
     "use strict";
     var noop = function noop() {
+            return;
+        },
+        soundbrix_audio_context;
+    if (!global.AudioContext) {
+        (function soundBrixAudioContextSetup() {
+            var vendors = ['ms', 'moz', 'webkit', 'o'],
+                entry,
+                length = vendors.length,
+                x;
+            for (x = 0; x < length; x += 1) {
+                entry = global[vendors[x] + 'AudioContext'];
+                if (entry) {
+                    global.AudioContext = entry;
+                    soundbrix_audio_context = new global.AudioContext();
+                    break;
+                }
+            }
+        }());
+    } else {
+        soundbrix_audio_context = new global.AudioContext();
+    }
+    if (soundbrix_audio_context === undefined) {
+        console.log("This host doesn't have a Web Audio API implementation.");
         return;
-    };
+    }
+    if (typeof SOUNDBRIX === 'object') {
+        console.log('An instance of SoundBrix has already been created.');
+        return;
+    }
     function loadSound(url, callback) {
         var request = new XMLHttpRequest();
         // Load sound synchronously (the 'false' flag), 'true' means asynchronous
@@ -74,22 +101,19 @@
         }
         return temp;
     }
-    global.SOUNDBRIX = {
+    SOUNDBRIX = {
         // This type creates a new buffer source everytime an instance of the sound is played to allow multiple playback of the same sound (multishot) but can't be paused or stopped
         "Type1": function Type1(user_settings) {
-            var self = this, gain = 1, max_gain = 100, settings, default_settings = {
-                loop: false,
-                playback_rate: 1
-            };
+            var self = this,
+                max_gain = 100,
+                settings,
+                default_settings = {
+                    loop: false,
+                    playback_rate: 1,
+                    gain: 100
+                };
             settings = mergeSettings(default_settings, user_settings);
-            if (global.soundbrix_caudio_context === undefined) {
-                try {
-                    global.soundbrix_caudio_context = new global.webkitAudioContext();
-                } catch (e) {
-                    alert(e + '\nFailed to create sound object.');
-                    return;
-                }
-            }
+            settings.gain = (settings.gain >= max_gain) ? 1 : (settings.gain / max_gain) * (settings.gain / max_gain);
             if (settings.source === undefined) {
                 alert('ERROR: No sound source url!\nFailed to create sound object.');
                 return;
@@ -97,21 +121,25 @@
             function setMethods() {
                 self.playSound = function playSound() {
                     var channel, gainNode;
-                    gainNode = global.soundbrix_caudio_context.createGainNode();
-                    gainNode.connect(global.soundbrix_caudio_context.destination);
-                    gainNode.gain.value = gain;
-                    channel = global.soundbrix_caudio_context.createBufferSource();
+                    channel = soundbrix_audio_context.createBufferSource();
                     channel.buffer = self.audio_buffer;
                     channel.loop = false;
                     channel.playbackRate.value = settings.playback_rate;
-                    channel.connect(gainNode);
-                    channel.noteOn(0);
+                    if (soundbrix_audio_context.createGainNode === undefined) {
+                        channel.connect(soundbrix_audio_context.destination);
+                    } else {
+                        gainNode = soundbrix_audio_context.createGainNode();
+                        gainNode.connect(soundbrix_audio_context.destination);
+                        gainNode.gain.value = settings.gain;
+                        channel.connect(gainNode);
+                    }
+                    if (channel.noteOn !== undefined) { channel.noteOn(0); }
                 };
                 self.setVolume = function setVolume(value) {
                     var fraction;
                     if (value > max_gain) { value = max_gain; }
                     fraction = value / max_gain;
-                    gain = fraction * fraction; //Using x*x curve to smooth out transition
+                    settings.gain = fraction * fraction; //Using x*x curve to smooth out transition
                 };
                 self.setPlaybackRate = function setPlaybackRate(value) {
                     settings.playback_rate = value;
@@ -122,8 +150,8 @@
             self.setPlaybackRate = noop;
             loadSound(settings.source, function (response) {
                 // For some instances, the createBuffer method is preferred over decodeAudioData to forcibly decode the buffer without waiting for callbacks
-                //self.audio_buffer = global.soundbrix_caudio_context.createBuffer(request.response, false);
-                global.soundbrix_caudio_context.decodeAudioData(response, function (buffer) {
+                //self.audio_buffer = soundbrix_audio_context.createBuffer(request.response, false);
+                soundbrix_audio_context.decodeAudioData(response, function (buffer) {
                     //This block will run when the buffer has been decoded. Insert all remaining sound object code here
                     self.audio_buffer = buffer;
                     setMethods();
@@ -135,26 +163,24 @@
         },
         // This type uses 'sound channels' to allow multiple playback of the same sound (multishot)
         "Type2": function Type2(user_settings) {
-            var self = this, settings, gainNode = [], gain = 1, max_gain = 100, default_settings = {
-                loop: false,
-                playback_rate: 1,
-                max_channels: 1
-            };
+            var self = this,
+                settings,
+                gainNode = [],
+                max_gain = 100,
+                default_settings = {
+                    loop: false,
+                    playback_rate: 1,
+                    gain: 100,
+                    max_channels: 1
+                };
             self.channel_busy = [];
             self.source_channels = {};
             self.current_sound_channel = 0;
             self.audio_buffer = null;
             self.is_playing = false;
             settings = mergeSettings(default_settings, user_settings);
+            settings.gain = (settings.gain >= max_gain) ? 1 : (settings.gain / max_gain) * (settings.gain / max_gain);
             settings.max_channels += 1; //Sneakily increment the number of channels by one to provide a 'buffer' for setting up a new sound source. See the sound channel lag fix inside the self.playSound method
-            if (global.soundbrix_caudio_context === undefined) {
-                try {
-                    global.soundbrix_caudio_context = new global.webkitAudioContext();
-                } catch (e) {
-                    alert(e + '\nFailed to create sound object.');
-                    return;
-                }
-            }
             if (settings.source === undefined) {
                 alert('ERROR: No sound source url!\nFailed to create sound object.');
                 return;
@@ -162,14 +188,18 @@
             function createChannels() {
                 var i;
                 for (i = 0; i < settings.max_channels; i += 1) {
-                    gainNode[i] = global.soundbrix_caudio_context.createGainNode();
-                    gainNode[i].connect(global.soundbrix_caudio_context.destination);
-                    gainNode[i].gain.value = gain;
-                    self.source_channels[i] = global.soundbrix_caudio_context.createBufferSource();
+                    self.source_channels[i] = soundbrix_audio_context.createBufferSource();
                     self.source_channels[i].buffer = self.audio_buffer;
                     self.source_channels[i].loop = false;
                     self.source_channels[i].playbackRate.value = settings.playback_rate;
-                    self.source_channels[i].connect(gainNode[i]);
+                    if (soundbrix_audio_context.createGainNode === undefined) {
+                        self.source_channels[i].connect(soundbrix_audio_context.destination);
+                    } else {
+                        gainNode[i] = soundbrix_audio_context.createGainNode();
+                        gainNode[i].connect(soundbrix_audio_context.destination);
+                        gainNode[i].gain.value = settings.gain;
+                        self.source_channels[i].connect(gainNode[i]);
+                    }
                     self.channel_busy[i] = false;
                 }
             }
@@ -182,7 +212,7 @@
                             self.current_sound_channel = 0;
                         }
                     }
-                    self.source_channels[self.current_sound_channel].noteOn(0);
+                    if (self.source_channels[self.current_sound_channel].noteOn !== undefined) { self.source_channels[self.current_sound_channel].noteOn(0); }
                     self.channel_busy[self.current_sound_channel] = true;
                     /*
                         
@@ -199,15 +229,19 @@
                             next_channel = self.current_sound_channel + 1;
                         }
                         if (self.channel_busy[next_channel]) {
-                            self.source_channels[next_channel].noteOff(0);
-                            gainNode[next_channel] = global.soundbrix_caudio_context.createGainNode();
-                            gainNode[next_channel].connect(global.soundbrix_caudio_context.destination);
-                            gainNode[next_channel].gain.value = gain;
-                            self.source_channels[next_channel] = global.soundbrix_caudio_context.createBufferSource();
+                            if (self.source_channels[next_channel].noteOff !== undefined) { self.source_channels[next_channel].noteOff(0); }
+                            self.source_channels[next_channel] = soundbrix_audio_context.createBufferSource();
                             self.source_channels[next_channel].buffer = self.audio_buffer;
                             self.source_channels[next_channel].loop = false;
                             self.source_channels[next_channel].playbackRate.value = settings.playback_rate;
-                            self.source_channels[next_channel].connect(gainNode[next_channel]);
+                            if (soundbrix_audio_context.createGainNode === undefined) {
+                                self.source_channels[next_channel].connect(soundbrix_audio_context.destination);
+                            } else {
+                                gainNode[next_channel] = soundbrix_audio_context.createGainNode();
+                                gainNode[next_channel].connect(soundbrix_audio_context.destination);
+                                gainNode[next_channel].gain.value = settings.gain;
+                                self.source_channels[next_channel].connect(gainNode[next_channel]);
+                            }
                             self.channel_busy[next_channel] = false;
                         }
                     }
@@ -215,19 +249,26 @@
                 };
                 self.stopSound = function stopSound() {
                     var i;
-                    self.is_playing = false;
-                    for (i = 0; i < settings.max_channels; i += 1) {
-                        self.source_channels[i].noteOff(0);
+                    if (self.is_playing) {
+                        self.is_playing = false;
+                        for (i = 0; i < settings.max_channels; i += 1) {
+                            if (self.source_channels[i].noteOff !== undefined) {
+                                // Let's check first if the current channel is 'busy' before calling noteOff. Why? Because Chrome throws an error when calling noteOff on unplayed buffer sources.
+                                if (self.channel_busy[i]) {
+                                    self.source_channels[i].noteOff(0);
+                                }
+                            }
+                        }
+                        createChannels();
                     }
-                    createChannels();
                 };
                 self.setVolume = function setVolume(value) {
                     var fraction, i;
                     if (value > max_gain) { value = max_gain; }
                     fraction = value / max_gain;
-                    gain = fraction * fraction; //Using x*x curve to smooth out transition
+                    settings.gain = fraction * fraction; //Using x*x curve to smooth out transition
                     for (i = 0; i < gainNode.length; i += 1) {
-                        gainNode[i].gain.value = gain;
+                        gainNode[i].gain.value = settings.gain;
                     }
                 };
                 self.setPlaybackRate = function setPlaybackRate(value) {
@@ -244,8 +285,8 @@
             self.setPlaybackRate = noop;
             loadSound(settings.source, function (response) {
                 // For some instances, the createBuffer method is preferred over decodeAudioData to forcibly decode the buffer without waiting for callbacks
-                //self.audio_buffer = global.soundbrix_caudio_context.createBuffer(request.response, false);
-                global.soundbrix_caudio_context.decodeAudioData(response, function (buffer) {
+                //self.audio_buffer = soundbrix_audio_context.createBuffer(request.response, false);
+                soundbrix_audio_context.decodeAudioData(response, function (buffer) {
                     //This block will run when the buffer has been decoded. Insert all remaining sound object code here
                     self.audio_buffer = buffer;
                     createChannels();
