@@ -20,16 +20,17 @@
     Author: Jaycliff Arcilla
     
     This library was created to provide sweet audio fallback options when crap happens (Flash Epic Fail).
-    Moreover, my AoV client (Nigel S. Ball) is reasonably allergic to Flash, making this a perfect non-Flash audio solution for his websites.
+    Moreover, my previous AoV client (Nigel S. Ball) is reasonably allergic to Flash, making this a perfect non-Flash audio solution for his websites.
     
     UPDATES:
     
+    * v1.2 (05/19/2014) Refactored checking for AudioContext constructor. Several optimizations.
     * v1.1 (09/05/2012) Made several enhancements to the creation process. Added gain nodes per sound source. Fixed volume setting method.
     * v1.0 (02/22/2012) Initial release.
     
     NOTES:
     
-    * AudioBufferSourceNode can only be played once. To play another sound of the same source, another AudioBufferSourceNode must be created.
+    * AudioBufferSourceNode can only be played once. To play another sound of the same source, another AudioBufferSourceNode must be created, which is stupid.
     * Callbacks MUST be set off using a timer (setTimeout) so as not to wait for the callback to finish executing to proceed with the next statements.
     
     ISSUES:
@@ -42,7 +43,6 @@
     
     * Assume console, alert, ...
     * Assume a browser
-    * Add 'webkitAudioContext' as a global variable in JSLint
     
 */
 var SOUNDBRIX;
@@ -90,6 +90,7 @@ var SOUNDBRIX;
     loadSound = function loadSound(url, callback) {
         var request = new XMLHttpRequest();
         // Load sound synchronously (the 'false' flag), 'true' means asynchronous
+        // Avoid using synchronous operations in JavaScript
         request.open('GET', url, true);
         request.responseType = 'arraybuffer';
         request.addEventListener('load', function () { callback(request.response); }, false);
@@ -156,6 +157,8 @@ var SOUNDBRIX;
             }
             function loadSuccess(buffer) {
                 // This block will run when the buffer has been decoded. Insert all remaining sound object code here
+                // For some instances, the createBuffer method is preferred over decodeAudioData to forcibly decode the buffer without waiting for callbacks
+                //self.audio_buffer = soundbrix_audio_context.createBuffer(request.response, false);
                 self.audio_buffer = buffer;
                 setMethods();
                 if (settings.callback !== undefined && typeof settings.callback === 'function') { setTimeout(settings.callback, 10); } //The callback MUST be set off using a timer (setTimeout) so as not to wait for the callback to finish executing to proceed with the next statements
@@ -164,8 +167,6 @@ var SOUNDBRIX;
                 alert('Failed to load source!');
             }
             function loadCallback(response) {
-                // For some instances, the createBuffer method is preferred over decodeAudioData to forcibly decode the buffer without waiting for callbacks
-                //self.audio_buffer = soundbrix_audio_context.createBuffer(request.response, false);
                 soundbrix_audio_context.decodeAudioData(response, loadSuccess, loadFail);
             }
             self.playSound = noop;
@@ -192,7 +193,8 @@ var SOUNDBRIX;
             self.is_playing = false;
             settings = mergeSettings(default_settings, user_settings);
             settings.gain = (settings.gain >= max_gain) ? 1 : (settings.gain / max_gain) * (settings.gain / max_gain);
-            settings.max_channels += 1; // Sneakily increment the number of channels by one to provide a 'buffer' for setting up a new sound source. See the sound channel lag fix inside the self.playSound method
+            // Sneakily increment the number of channels by one to provide a 'buffer' for setting up a new sound source. See the sound channel lag fix inside the self.playSound method
+            settings.max_channels += 1;
             if (settings.source === undefined) {
                 alert('ERROR: No sound source url!\nFailed to create sound object.');
                 return;
@@ -234,25 +236,26 @@ var SOUNDBRIX;
                     */
                     // Start sound channel lag fix
                     if (settings.max_channels > 1) {
-                        var next_channel;
+                        var next_channel, next_source_channel;
                         if (self.current_sound_channel + 1 >= settings.max_channels) {
                             next_channel = 0;
                         } else {
                             next_channel = self.current_sound_channel + 1;
                         }
+                        next_source_channel = self.source_channels[next_channel];
                         if (self.channel_busy[next_channel]) {
-                            if (self.source_channels[next_channel].noteOff !== undefined) { self.source_channels[next_channel].noteOff(0); }
-                            self.source_channels[next_channel] = soundbrix_audio_context.createBufferSource();
-                            self.source_channels[next_channel].buffer = self.audio_buffer;
-                            self.source_channels[next_channel].loop = false;
-                            self.source_channels[next_channel].playbackRate.value = settings.playback_rate;
+                            if (next_source_channel.noteOff !== undefined) { next_source_channel.noteOff(0); }
+                            next_source_channel = soundbrix_audio_context.createBufferSource();
+                            next_source_channel.buffer = self.audio_buffer;
+                            next_source_channel.loop = false;
+                            next_source_channel.playbackRate.value = settings.playback_rate;
                             if (soundbrix_audio_context.createGainNode === undefined) {
-                                self.source_channels[next_channel].connect(soundbrix_audio_context.destination);
+                                next_source_channel.connect(soundbrix_audio_context.destination);
                             } else {
                                 gainNode[next_channel] = soundbrix_audio_context.createGainNode();
                                 gainNode[next_channel].connect(soundbrix_audio_context.destination);
                                 gainNode[next_channel].gain.value = settings.gain;
-                                self.source_channels[next_channel].connect(gainNode[next_channel]);
+                                next_source_channel.connect(gainNode[next_channel]);
                             }
                             self.channel_busy[next_channel] = false;
                         }
@@ -293,17 +296,18 @@ var SOUNDBRIX;
             }
             function loadSuccess(buffer) {
                 // This block will run when the buffer has been decoded. Insert all remaining sound object code here
+                // For some instances, the createBuffer method is preferred over decodeAudioData to forcibly decode the buffer without waiting for callbacks
+                //self.audio_buffer = soundbrix_audio_context.createBuffer(request.response, false);
                 self.audio_buffer = buffer;
                 createChannels();
                 setMethods();
-                if (settings.callback !== undefined && typeof settings.callback === 'function') { setTimeout(settings.callback, 10); } //The callback MUST be set off using a timer (setTimeout) so as not to wait for the callback to finish executing to proceed with the next statements
+                //The callback MUST be set off using a timer (setTimeout) so as not to wait for the callback to finish executing to proceed with the next statements
+                if (settings.callback !== undefined && typeof settings.callback === 'function') { setTimeout(settings.callback, 10); }
             }
             function loadFail() {
                 alert('Failed to load source!');
             }
             function loadCallback(response) {
-                // For some instances, the createBuffer method is preferred over decodeAudioData to forcibly decode the buffer without waiting for callbacks
-                //self.audio_buffer = soundbrix_audio_context.createBuffer(request.response, false);
                 soundbrix_audio_context.decodeAudioData(response, loadSuccess, loadFail);
             }
             self.playSound = noop;
