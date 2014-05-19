@@ -48,46 +48,55 @@
 var SOUNDBRIX;
 (function (global) {
     "use strict";
-    var noop = function noop() {
-            return;
-        },
+    var noop,
+        hasAudioContext,
+        loadSound,
+        mergeSettings,
         soundbrix_audio_context;
-    if (!global.AudioContext) {
-        (function soundBrixAudioContextSetup() {
-            var vendors = ['ms', 'moz', 'webkit', 'o'],
-                entry,
-                length = vendors.length,
-                x;
-            for (x = 0; x < length; x += 1) {
-                entry = global[vendors[x] + 'AudioContext'];
-                if (entry) {
-                    global.AudioContext = entry;
-                    soundbrix_audio_context = new global.AudioContext();
-                    break;
-                }
-            }
-        }());
-    } else {
-        soundbrix_audio_context = new global.AudioContext();
-    }
-    if (soundbrix_audio_context === undefined) {
-        console.log("This host doesn't have a Web Audio API implementation.");
-        return;
-    }
-    if (typeof SOUNDBRIX === 'object') {
+    if (typeof SOUNDBRIX === 'object' && SOUNDBRIX.audioContext !== undefined) {
         console.log('An instance of SoundBrix has already been created.');
         return;
     }
-    function loadSound(url, callback) {
+    hasAudioContext = function hasAudioContext() {
+        var vendor_prefixes,
+            entry,
+            audio_context_string,
+            length,
+            x;
+        if (!global.AudioContext) {
+            vendor_prefixes = ['ms', 'moz', 'webkit', 'o'];
+            audio_context_string = 'AudioContext';
+            length = vendor_prefixes.length;
+            for (x = 0; x < length; x += 1) {
+                entry = global[vendor_prefixes[x] + audio_context_string];
+                if (entry && typeof entry === 'function') {
+                    global.AudioContext = entry;
+                    return true;
+                }
+            }
+            return false;
+        }
+        return true;
+    };
+    if (hasAudioContext()) {
+        noop = function noop() {
+            return;
+        };
+        soundbrix_audio_context = new global.AudioContext();
+    } else {
+        console.log("This host doesn't have a Web Audio API implementation.");
+        return;
+    }
+    loadSound = function loadSound(url, callback) {
         var request = new XMLHttpRequest();
         // Load sound synchronously (the 'false' flag), 'true' means asynchronous
         request.open('GET', url, true);
         request.responseType = 'arraybuffer';
         request.addEventListener('load', function () { callback(request.response); }, false);
         request.send();
-    }
+    };
     // ds and us mean 'default settings' and 'user settings', respectively. Now you know. - Manny
-    function mergeSettings(ds, us) {
+    mergeSettings = function mergeSettings(ds, us) {
         var key, temp = {};
         for (key in ds) {
             if (ds.hasOwnProperty(key)) {
@@ -100,7 +109,7 @@ var SOUNDBRIX;
             }
         }
         return temp;
-    }
+    };
     SOUNDBRIX = {
         // This type creates a new buffer source everytime an instance of the sound is played to allow multiple playback of the same sound (multishot) but can't be paused or stopped
         "Type1": function Type1(user_settings) {
