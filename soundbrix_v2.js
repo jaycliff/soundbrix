@@ -121,7 +121,7 @@ var SOUNDBRIX;
             max_channels: 1
         };
         function Type1(settings) {
-            var that = this;
+            var that = this, gain_rate = settings.gain / max_gain;
             function setMethods() {
                 that.playSound = function playSound() {
                     var channel, gainNode;
@@ -129,12 +129,12 @@ var SOUNDBRIX;
                     channel.buffer = that.audio_buffer;
                     channel.loop = settings.loop;
                     channel.playbackRate.value = settings.playback_rate;
-                    if (soundbrix_audio_context.createGainNode === undefined) {
+                    if (soundbrix_audio_context.createGain === undefined) {
                         channel.connect(soundbrix_audio_context.destination);
                     } else {
-                        gainNode = soundbrix_audio_context.createGainNode();
+                        gainNode = soundbrix_audio_context.createGain();
                         gainNode.connect(soundbrix_audio_context.destination);
-                        gainNode.gain.value = settings.gain;
+                        gainNode.gain.value = gain_rate * gain_rate;
                         channel.connect(gainNode);
                     }
                     if (channel.start !== undefined) {
@@ -175,7 +175,7 @@ var SOUNDBRIX;
             loadSound(settings.source, loadCallback);
         }
         function Type2(settings) {
-            var that = this, gainNode = [];
+            var that = this, gainNode = [], gain_rate = settings.gain / max_gain;
             that.channel_busy = [];
             that.source_channels = {};
             that.current_sound_channel = 0;
@@ -190,12 +190,14 @@ var SOUNDBRIX;
                     that.source_channels[i].buffer = that.audio_buffer;
                     that.source_channels[i].loop = settings.loop;
                     that.source_channels[i].playbackRate.value = settings.playback_rate;
-                    if (soundbrix_audio_context.createGainNode === undefined) {
+                    if (soundbrix_audio_context.createGain === undefined) {
+                        console.log('No gain nodes.');
+                        console.log(soundbrix_audio_context);
                         that.source_channels[i].connect(soundbrix_audio_context.destination);
                     } else {
-                        gainNode[i] = soundbrix_audio_context.createGainNode();
+                        gainNode[i] = soundbrix_audio_context.createGain();
                         gainNode[i].connect(soundbrix_audio_context.destination);
-                        gainNode[i].gain.value = settings.gain;
+                        gainNode[i].gain.value = gain_rate * gain_rate;
                         that.source_channels[i].connect(gainNode[i]);
                     }
                     that.channel_busy[i] = false;
@@ -233,10 +235,10 @@ var SOUNDBRIX;
                         that.source_channels[next_channel].buffer = that.audio_buffer;
                         that.source_channels[next_channel].loop = settings.loop;
                         that.source_channels[next_channel].playbackRate.value = settings.playback_rate;
-                        if (soundbrix_audio_context.createGainNode === undefined) {
+                        if (soundbrix_audio_context.createGain === undefined) {
                             that.source_channels[next_channel].connect(soundbrix_audio_context.destination);
                         } else {
-                            gainNode[next_channel] = soundbrix_audio_context.createGainNode();
+                            gainNode[next_channel] = soundbrix_audio_context.createGain();
                             gainNode[next_channel].connect(soundbrix_audio_context.destination);
                             gainNode[next_channel].gain.value = settings.gain;
                             that.source_channels[next_channel].connect(gainNode[next_channel]);
