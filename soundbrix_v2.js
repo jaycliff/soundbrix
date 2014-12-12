@@ -1,5 +1,5 @@
 /*
-    Copyright 2012 Jaycliff Arcilla
+    Copyright 2012 Jaycliff Arcilla of Eversun Software Philippines Corporation (Davao branch)
 
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
