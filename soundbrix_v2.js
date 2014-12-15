@@ -55,8 +55,8 @@ var SOUNDBRIX;
         loadSound,
         mergeSettings,
         soundbrix_audio_context;
-    if (typeof SOUNDBRIX === 'object' && SOUNDBRIX.audioContext !== undefined) {
-        console.log('An instance of SoundBrix has already been created.');
+    if (typeof SOUNDBRIX === "object" && typeof SOUNDBRIX.audioContext === "function") {
+        console.log('An instance of SoundBrix already exists.');
         return;
     }
     (function hasAudioContextSetup() {
@@ -69,7 +69,7 @@ var SOUNDBRIX;
                 length = vendor_prefixes.length;
                 for (x = 0; x < length; x += 1) {
                     entry = global[vendor_prefixes[x] + audio_context_string];
-                    if (entry && typeof entry === 'function') {
+                    if (typeof entry === "function") {
                         global.AudioContext = entry;
                         return true;
                     }
@@ -120,8 +120,9 @@ var SOUNDBRIX;
             gain: 100,
             max_channels: 1
         };
+        // Type1 sound instances allow multiple instances to be played, but can't be stopped.
         function Type1(settings) {
-            var that = this, gain_rate = settings.gain / max_gain;
+            var that = this, gain_rate = settings.gain / max_gain, curve = gain_rate * gain_rate;
             function setMethods() {
                 that.playSound = function playSound() {
                     var channel, gainNode;
@@ -129,15 +130,16 @@ var SOUNDBRIX;
                     channel.buffer = that.audio_buffer;
                     channel.loop = settings.loop;
                     channel.playbackRate.value = settings.playback_rate;
-                    if (soundbrix_audio_context.createGain === undefined) {
+                    if (typeof soundbrix_audio_context.createGain !== "function") {
                         channel.connect(soundbrix_audio_context.destination);
                     } else {
                         gainNode = soundbrix_audio_context.createGain();
                         gainNode.connect(soundbrix_audio_context.destination);
-                        gainNode.gain.value = gain_rate * gain_rate;
+                        // Using x * x curve to smooth out transition
+                        gainNode.gain.value = curve;
                         channel.connect(gainNode);
                     }
-                    if (channel.start !== undefined) {
+                    if (typeof channel.start === "function") {
                         channel.start(0);
                     }
                 };
@@ -145,7 +147,9 @@ var SOUNDBRIX;
                     var fraction;
                     if (value > max_gain) { value = max_gain; }
                     fraction = value / max_gain;
-                    settings.gain = fraction * fraction; // Using x * x curve to smooth out transition
+                    // Using x * x curve to smooth out transition
+                    settings.gain = value;
+                    curve = fraction * fraction;
                 };
                 that.setPlaybackRate = function setPlaybackRate(value) {
                     settings.playback_rate = value;
@@ -157,7 +161,8 @@ var SOUNDBRIX;
                 //that.audio_buffer = soundbrix_audio_context.createBuffer(request.response, false);
                 that.audio_buffer = buffer;
                 setMethods();
-                if (settings.callback !== undefined && typeof settings.callback === 'function') { setTimeout(settings.callback, 10); } //The callback MUST be set off using a timer (setTimeout) so as not to wait for the callback to finish executing to proceed with the next statements
+                // The callback MUST be set off using a timer (setTimeout) so as not to wait for the callback to finish executing to proceed with the next statements
+                if (typeof settings.callback === "function") { setTimeout(settings.callback, 0); }
             }
             function loadFail() {
                 throw new Error('Failed to load source from ' + settings.source);
@@ -174,8 +179,10 @@ var SOUNDBRIX;
             that.setPlaybackRate = noop;
             loadSound(settings.source, loadCallback);
         }
+        // Type2 sound instances utilize 'channels' to allow multiple instances of a sound source to be played.
+        // Also, it's stoppable (stopSound)
         function Type2(settings) {
-            var that = this, gainNode = [], gain_rate = settings.gain / max_gain;
+            var that = this, gainNode = [], gain_rate = settings.gain / max_gain, curve = gain_rate * gain_rate;
             that.channel_busy = [];
             that.source_channels = {};
             that.current_sound_channel = 0;
@@ -190,15 +197,16 @@ var SOUNDBRIX;
                     that.source_channels[i].buffer = that.audio_buffer;
                     that.source_channels[i].loop = settings.loop;
                     that.source_channels[i].playbackRate.value = settings.playback_rate;
-                    if (soundbrix_audio_context.createGain === undefined) {
+                    if (typeof soundbrix_audio_context.createGain !== "function") {
                         console.log('No gain nodes.');
                         console.log(soundbrix_audio_context);
                         that.source_channels[i].connect(soundbrix_audio_context.destination);
                     } else {
                         gainNode[i] = soundbrix_audio_context.createGain();
-                        gainNode[i].connect(soundbrix_audio_context.destination);
-                        gainNode[i].gain.value = gain_rate * gain_rate;
+                        // Using x * x curve to smooth out transition
+                        gainNode[i].gain.value = curve;
                         that.source_channels[i].connect(gainNode[i]);
+                        gainNode[i].connect(soundbrix_audio_context.destination);
                     }
                     that.channel_busy[i] = false;
                 }
@@ -212,7 +220,7 @@ var SOUNDBRIX;
                             that.current_sound_channel = 0;
                         }
                     }
-                    if (that.source_channels[that.current_sound_channel].start !== undefined) {
+                    if (typeof that.source_channels[that.current_sound_channel].start === "function") {
                         that.source_channels[that.current_sound_channel].start(0);
                     }
                     that.channel_busy[that.current_sound_channel] = true;
@@ -235,13 +243,13 @@ var SOUNDBRIX;
                         that.source_channels[next_channel].buffer = that.audio_buffer;
                         that.source_channels[next_channel].loop = settings.loop;
                         that.source_channels[next_channel].playbackRate.value = settings.playback_rate;
-                        if (soundbrix_audio_context.createGain === undefined) {
+                        if (typeof soundbrix_audio_context.createGain !== "function") {
                             that.source_channels[next_channel].connect(soundbrix_audio_context.destination);
                         } else {
                             gainNode[next_channel] = soundbrix_audio_context.createGain();
-                            gainNode[next_channel].connect(soundbrix_audio_context.destination);
-                            gainNode[next_channel].gain.value = settings.gain;
+                            gainNode[next_channel].gain.value = curve;
                             that.source_channels[next_channel].connect(gainNode[next_channel]);
+                            gainNode[next_channel].connect(soundbrix_audio_context.destination);
                         }
                         that.channel_busy[next_channel] = false;
                     }
@@ -266,9 +274,11 @@ var SOUNDBRIX;
                     var fraction, i;
                     if (value > max_gain) { value = max_gain; }
                     fraction = value / max_gain;
-                    settings.gain = fraction * fraction; // Using x * x curve to smooth out transition
+                    // Using x * x curve to smooth out transition
+                    settings.gain = value;
+                    curve = fraction * fraction;
                     for (i = 0; i < gainNode.length; i += 1) {
-                        gainNode[i].gain.value = settings.gain;
+                        gainNode[i].gain.value = curve;
                     }
                 };
                 that.setPlaybackRate = function setPlaybackRate(value) {
@@ -287,8 +297,8 @@ var SOUNDBRIX;
                 createChannels();
                 //console.log(that.source_channels[0]);
                 setMethods();
-                //The callback MUST be set off using a timer (setTimeout) so as not to wait for the callback to finish executing to proceed with the next statements
-                if (settings.callback !== undefined && typeof settings.callback === 'function') { setTimeout(settings.callback, 10); }
+                // The callback MUST be set off using a timer (setTimeout) so as not to wait for the callback to finish executing to proceed with the next statements
+                if (typeof settings.callback === "function") { setTimeout(settings.callback, 0); }
             }
             function loadFail() {
                 throw new Error('Failed to load source from ' + settings.source);
@@ -305,16 +315,22 @@ var SOUNDBRIX;
         SOUNDBRIX = {
             createSound: function createSound(user_settings) {
                 var settings;
-                if (user_settings === undefined || typeof user_settings !== 'object') {
+                if (typeof user_settings !== "object") {
                     throw new Error('ERROR: A valid object parameter is required.');
                 }
-                user_settings.source = user_settings.source || user_settings.src || user_settings.href;
+                user_settings.source = user_settings.source || user_settings.src || user_settings.href || user_settings.url || user_settings.location;
                 if (user_settings.source === undefined) {
                     throw new Error('ERROR: No valid sound source url found!\nFailed to create sound object.');
                 }
                 settings = mergeSettings(default_settings, user_settings);
                 // The actual gain value that should be in use for the buffer(s) must not be greater than one (1)
-                settings.gain = (settings.gain >= max_gain) ? 1 : (settings.gain / max_gain) * (settings.gain / max_gain);
+                if (settings.gain < 0) {
+                    settings.gain = 0;
+                } else {
+                    if (settings.gain > max_gain) {
+                        settings.gain = max_gain;
+                    }
+                }
                 if (settings.exp) {
                     return new Type1(settings);
                 }
@@ -322,18 +338,23 @@ var SOUNDBRIX;
             }
         };
     }());
-    Object.defineProperty(SOUNDBRIX, 'audioContext', {
-        get: function get() {
-            return soundbrix_audio_context;
-        },
-        set: function set(value) {
-            console.log('This property is read-only. You entered: ' + value);
-            return;
-        },
-        enumerable: true,
-        configurable: false
-    });
-    if (Object.freeze) {
+    if (typeof Object.defineProperty === "function") {
+        Object.defineProperty(SOUNDBRIX, 'audioContext', {
+            get: function get() {
+                return soundbrix_audio_context;
+            },
+            set: function set(value) {
+                console.log('This property is read-only. You entered: ' + value);
+                return;
+            },
+            enumerable: true,
+            configurable: false
+        });
+    }
+    SOUNDBRIX.getAudioContext = function () {
+        return soundbrix_audio_context;
+    };
+    if (typeof Object.freeze === "function") {
         Object.freeze(SOUNDBRIX);
     }
 }(window));
