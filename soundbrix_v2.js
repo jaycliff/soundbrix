@@ -1,6 +1,6 @@
 /*
     Copyright 2012 Jaycliff Arcilla of Eversun Software Philippines Corporation (Davao branch)
-
+    
     Licensed under the Apache License, Version 2.0 (the "License");
     you may not use this file except in compliance with the License.
     You may obtain a copy of the License at
@@ -145,7 +145,13 @@ var SOUNDBRIX;
                 };
                 that.setVolume = function setVolume(value) {
                     var fraction;
-                    if (value > max_gain) { value = max_gain; }
+                    if (value > max_gain) {
+                        value = max_gain;
+                    } else {
+                        if (value < 0) {
+                            value = 0;
+                        }
+                    }
                     fraction = value / max_gain;
                     // Using x * x curve to smooth out transition
                     settings.gain = value;
@@ -272,7 +278,13 @@ var SOUNDBRIX;
                 };
                 that.setVolume = function setVolume(value) {
                     var fraction, i;
-                    if (value > max_gain) { value = max_gain; }
+                    if (value > max_gain) {
+                        value = max_gain;
+                    } else {
+                        if (value < 0) {
+                            value = 0;
+                        }
+                    }
                     fraction = value / max_gain;
                     // Using x * x curve to smooth out transition
                     settings.gain = value;
