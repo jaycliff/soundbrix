@@ -38,15 +38,8 @@
     
     * A gain node cannot accept new inputs starting from when the sound sources start playing. To counter this, a separate gain node for each sound source must be created. However, audio_context.destination doesn't seem to have this limitation.
     
-    Passed JSLint checking! (http://www.jslint.com/)
-    
-    JSLINT OPTIONS:
-    
-    * Assume console, alert, ...
-    * Assume a browser
-    
 */
-
+/*jslint browser: true, devel: true, nomen: true, unparam: true, sub: true, regexp: true */
 var SOUNDBRIX;
 (function (global) {
     "use strict";
@@ -83,6 +76,9 @@ var SOUNDBRIX;
         noop = function noop() {
             return;
         };
+        if (Object.freeze) {
+            Object.freeze(noop);
+        }
         soundbrix_audio_context = new global.AudioContext();
     } else {
         console.log("This host doesn't have a Web Audio API implementation.");
@@ -120,8 +116,8 @@ var SOUNDBRIX;
             gain: 100,
             max_channels: 1
         };
-        // Type1 sound instances allow multiple instances to be played, but can't be stopped.
-        function Type1(settings) {
+        // SoundBrixObjectType1 sound instances allow multiple instances to be played, but can't be stopped.
+        function SoundBrixObjectType1(settings) {
             var that = this, gain_rate = settings.gain / max_gain, curve = gain_rate * gain_rate;
             function setMethods() {
                 that.playSound = function playSound() {
@@ -183,17 +179,19 @@ var SOUNDBRIX;
             };
             that.setVolume = noop;
             that.setPlaybackRate = noop;
+            that.src = settings.source;
             loadSound(settings.source, loadCallback);
         }
-        // Type2 sound instances utilize 'channels' to allow multiple instances of a sound source to be played.
+        // SoundBrixObjectType2 sound instances utilize 'channels' to allow multiple instances of a sound source to be played.
         // Also, it's stoppable (stopSound)
-        function Type2(settings) {
+        function SoundBrixObjectType2(settings) {
             var that = this, gainNode = [], gain_rate = settings.gain / max_gain, curve = gain_rate * gain_rate;
             that.channel_busy = [];
             that.source_channels = {};
             that.current_sound_channel = 0;
             that.audio_buffer = null;
             that.is_playing = false;
+            that.src = settings.source;
             // Sneakily increment the number of channels by one to provide a 'buffer' for setting up a new sound source. See the sound channel lag fix inside the that.playSound method
             //settings.max_channels += 1;
             function createChannels() {
@@ -344,9 +342,9 @@ var SOUNDBRIX;
                     }
                 }
                 if (settings.exp) {
-                    return new Type1(settings);
+                    return new SoundBrixObjectType1(settings);
                 }
-                return new Type2(settings);
+                return new SoundBrixObjectType2(settings);
             }
         };
     }());
