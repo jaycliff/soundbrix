@@ -18,7 +18,7 @@
     SoundBrix: Experimental HTML5 Sound Object Creation Library powered by Web Audio API (Version 1.3 - 06/30/2014)
     Author: Jaycliff Arcilla
 */
-/*global AudioContext*/
+/*global AudioContext, AudioBuffer*/
 /*jslint browser: true, devel: true, nomen: true, unparam: true, sub: true, regexp: true */
 
 var SOUNDBRIX = (function (AudioContext) {
@@ -260,7 +260,7 @@ var SOUNDBRIX = (function (AudioContext) {
                 nextBSN = null;
             }
             return that;
-        }
+        };
         this.stop = function stop() {
             if (audio_buffer && playing) {
                 playing = false;
